@@ -6,44 +6,49 @@ import multiprocessing
 
 from transposition_cipher import decrypt_message
 from key_validation import InvalidKeyError, InputFileNotFoundError
-from english_detection import load_english_words, is_english
+from english_detection import load_english_words, english_score
 
 WORD_LIST_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               'english_words.txt')
 
+SCORE_THRESHOLD = 0.5
+
 
 def _try_keys(args):
-    """Worker function that tries a range of keys.
+    """Worker function that evaluates a range of keys.
+
+    Returns the best (highest-scoring) key from this chunk,
+    or None if no key exceeds the threshold.
 
     Args:
-        args: Tuple of (key_range, ciphertext, word_list_path,
-              found_flag_value).
+        args: Tuple of (key_range, ciphertext, word_list_path).
 
     Returns:
-        Tuple (key, plaintext) if a valid English decryption is
-        found, otherwise None.
+        Tuple (score, key, plaintext) for the best candidate,
+        or None if nothing scored above the threshold.
     """
-    key_range, ciphertext, word_list_path, found_flag = args
+    key_range, ciphertext, word_list_path = args
     word_set = load_english_words(word_list_path)
 
+    best = None
     for key in key_range:
-        if found_flag.value:
-            return None
         try:
             plaintext = decrypt_message(key, ciphertext)
-            if is_english(plaintext, word_set):
-                found_flag.value = 1
-                return (key, plaintext)
+            score = english_score(plaintext, word_set)
+            if score >= SCORE_THRESHOLD:
+                if best is None or score > best[0]:
+                    best = (score, key, plaintext)
         except Exception:
             continue
-    return None
+    return best
 
 
 def brute_force_decrypt(ciphertext, word_list_path=None):
     """Attempt all possible keys to decrypt a transposition cipher.
 
     Uses multiprocessing to distribute key attempts across
-    available CPU cores.
+    available CPU cores.  Each worker returns the best key from
+    its chunk; the overall best is selected from all workers.
 
     Args:
         ciphertext: The encrypted text to break.
@@ -64,8 +69,6 @@ def brute_force_decrypt(ciphertext, word_list_path=None):
 
     max_key = msg_len - 1
     num_workers = multiprocessing.cpu_count()
-    manager = multiprocessing.Manager()
-    found_flag = manager.Value('i', 0)
 
     all_keys = list(range(1, max_key + 1))
     chunk_size = max(1, len(all_keys) // num_workers)
@@ -73,15 +76,19 @@ def brute_force_decrypt(ciphertext, word_list_path=None):
     for i in range(0, len(all_keys), chunk_size):
         chunks.append(all_keys[i:i + chunk_size])
 
-    tasks = [(chunk, ciphertext, word_list_path, found_flag)
-             for chunk in chunks]
+    tasks = [(chunk, ciphertext, word_list_path) for chunk in chunks]
 
     with multiprocessing.Pool(processes=num_workers) as pool:
         results = pool.map(_try_keys, tasks)
 
+    best = None
     for result in results:
         if result is not None:
-            return result
+            if best is None or result[0] > best[0]:
+                best = result
+
+    if best is not None:
+        return (best[1], best[2])
 
     raise InvalidKeyError(
         "Brute-force failed: no key produced valid English text."

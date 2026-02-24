@@ -61,3 +61,38 @@ def is_english(text, word_set, threshold=0.5):
         return False
 
     return (match_count / total_count) >= threshold
+
+
+def english_score(text, word_set):
+    """Compute the fraction of words in text found in the word set.
+
+    Args:
+        text: The text to score.
+        word_set: A set of known English words (lowercase).
+
+    Returns:
+        A float between 0.0 and 1.0.
+    """
+    text = text.lower()
+    text = text.replace('_', ' ')
+    tokens = text.split()
+
+    if not tokens:
+        return 0.0
+
+    punct_table = str.maketrans('', '', string.punctuation)
+    match_count = 0
+    total_count = 0
+
+    for token in tokens:
+        cleaned = token.translate(punct_table)
+        if not cleaned:
+            continue
+        total_count += 1
+        if cleaned in word_set:
+            match_count += 1
+
+    if total_count == 0:
+        return 0.0
+
+    return match_count / total_count
