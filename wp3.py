@@ -110,40 +110,46 @@ def main():
     plaintext_file = sys.argv[2]
     key_file = sys.argv[3]
 
-    if not os.path.isfile(ciphertext_file):
-        raise InputFileNotFoundError(
-            f"Input file not found: {ciphertext_file}"
-        )
-
     try:
+        if not os.path.isfile(ciphertext_file):
+            raise InputFileNotFoundError(
+                f"Input file not found: {ciphertext_file}"
+            )
+
         with open(ciphertext_file, 'r', encoding='utf-8') as f:
             ciphertext = f.read()
-    except OSError as e:
-        raise InputFileNotFoundError(
-            f"Cannot read input file: {e}"
-        ) from e
 
-    if not ciphertext.strip():
-        print("Error: ciphertext file is empty.")
+        if not ciphertext.strip():
+            print("Error: ciphertext file is empty.")
+            sys.exit(1)
+
+        print(f"Ciphertext length: {len(ciphertext)}")
+        print(f"Trying keys 1 to {len(ciphertext) - 1} "
+              f"using {multiprocessing.cpu_count()} processes...")
+
+        key, plaintext = brute_force_decrypt(ciphertext)
+
+        print(f"Key found: {key}")
+        print(f"Plaintext preview: {plaintext[:80]}...")
+
+        with open(plaintext_file, 'w', encoding='utf-8') as f:
+            f.write(plaintext)
+
+        with open(key_file, 'w', encoding='utf-8') as f:
+            f.write(str(key))
+
+        print(f"Recovered plaintext written to {plaintext_file}")
+        print(f"Recovered key written to {key_file}")
+
+    except InputFileNotFoundError as e:
+        print(f"Error: {e}")
         sys.exit(1)
-
-    print(f"Ciphertext length: {len(ciphertext)}")
-    print(f"Trying keys 1 to {len(ciphertext) - 1} "
-          f"using {multiprocessing.cpu_count()} processes...")
-
-    key, plaintext = brute_force_decrypt(ciphertext)
-
-    print(f"Key found: {key}")
-    print(f"Plaintext preview: {plaintext[:80]}...")
-
-    with open(plaintext_file, 'w', encoding='utf-8') as f:
-        f.write(plaintext)
-
-    with open(key_file, 'w', encoding='utf-8') as f:
-        f.write(str(key))
-
-    print(f"Recovered plaintext written to {plaintext_file}")
-    print(f"Recovered key written to {key_file}")
+    except InvalidKeyError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
